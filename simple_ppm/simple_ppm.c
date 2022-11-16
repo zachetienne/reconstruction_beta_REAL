@@ -4,6 +4,12 @@
 #define MIN(a,b) ( ((a) < (b)) ? (a) : (b) )
 #define MAX(a,b) ( ((a) > (b)) ? (a) : (b) )
 
+#define MINUS2 0
+#define MINUS1 1
+#define PLUS_0  2
+#define PLUS_1  3
+#define PLUS_2  4
+
 
 //Eq. 60 in JOURNAL OF COMPUTATIONAL PHYSICS 123, 1-14 (1996)
 //   [note the factor of 2 missing in the |a_{j+1} - a_{j}| term].
@@ -71,16 +77,16 @@ static double shock_detection__ftilde(const double P[7]) {
 #define ETA1   20.0
 #define ETA2    0.05
 #define EPSILON 0.01
-static inline void steepen_rho(const double rho[7],double slope_lim_dU[MAXNUMVARS][MAXNUMINDICES]) {
+static void steepen_rho(const double rho[7],const double slope_lim_drho[7], const double Gamma_eff,
+                        double *rho_br_ppm, double *rho_bl_ppm) {
 
   // Next compute centered differences d RHOB and d^2 RHOB
   double d1rho_b     = 0.5*(rho[PLUS_1] - rho[MINUS1]);
   double d2rho_b_m1  = rho[PLUS_0] - 2.0*rho[MINUS1] + rho[MINUS2];
   double d2rho_b_p1  = rho[PLUS_2] - 2.0*rho[PLUS_1] + rho[PLUS_0];
 
-  // Compute effective Gamma = (partial P / partial rho0)_s /(P/rho0)
-  double Gamma_eff;
-  double contact_discontinuity_check = Gamma*K0*fabs(rho[PLUS_1]-rho[MINUS1])*
+  // Gamma_eff = (partial P / partial rho0)_s /(P/rho0)
+  double contact_discontinuity_check = Gamma_eff*K0*fabs(rho[PLUS_1]-rho[MINUS1])*
     MIN(P[PLUS_1],P[MINUS1])
     -fabs(P[PLUS_1]-P[MINUS1])*MIN(rho[PLUS_1],rho[MINUS1]);
   double second_deriv_check = -d2rho_b_p1*d2rho_b_m1;
@@ -102,19 +108,15 @@ static inline void steepen_rho(const double rho[7],double slope_lim_dU[MAXNUMVAR
     //    So: Ur[indexp1] = a_{j+1} - \delta_m a_{j+1} / 2. This is why we have rho_br_mc[indexp1]
     double rho_bl_mc    = rho[MINUS1] + 0.5*slope_lim_drho[MINUS1];
 
-    rho_bl_ppm[PLUS_0] = rho_bl_ppm[PLUS_0]*(1.0-eta) + rho_bl_mc*eta;
-    rho_br_ppm[PLUS_0] = rho_br_ppm[PLUS_0]*(1.0-eta) + rho_br_mc_p1*eta;
+    *rho_bl_ppm = (*rho_bl_ppm)*(1.0-eta) + rho_bl_mc*eta;
+    *rho_br_ppm = (*rho_br_ppm)*(1.0-eta) + rho_br_mc_p1*eta;
 
   }
 }
 
 
 
-#define MINUS2 0
-#define MINUS1 1
-#define PLUS_0  2
-#define PLUS_1  3
-#define PLUS_2  4
+// Gamma_eff = (partial P / partial rho0)_s /(P/rho0)
 void simple_ppm_1D(const double rho[7], const double P[7],
                    const double vx[7], const double vy[7], const double vz[7],
                    const double other_vars[8][7], const int num_other_vars,
