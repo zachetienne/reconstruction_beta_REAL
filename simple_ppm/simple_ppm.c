@@ -38,14 +38,17 @@ static void compute_UrUl_onevar(const double U[7], double *Ur, double *Ul) {
   const double slope_limited_dU_p0 = slope_limit(U[PLUS_0] - U[MINUS1], U[PLUS_1] - U[PLUS_0]);
   const double slope_limited_dU_p1 = slope_limit(U[PLUS_1] - U[PLUS_0], U[PLUS_2] - U[PLUS_1]);
 
-  *Ur = 0.5*(U[PLUS_1] + U[PLUS_0]) + (1.0/6.0)*(slope_lim_dU_p0 - slope_lim_dU_p1);
-  *Ul = 0.5*(U[PLUS_0] + U[MINUS1]) + (1.0/6.0)*(slope_lim_dU_m1 - slope_lim_dU_p0);
+  *Ur = 0.5*(U[PLUS_1] + U[PLUS_0]) + (1.0/6.0)*(slope_limited_dU_p0 - slope_limited_dU_p1);
+  *Ul = 0.5*(U[PLUS_0] + U[MINUS1]) + (1.0/6.0)*(slope_limited_dU_m1 - slope_limited_dU_p0);
 }
 
 
 // Compute ftilde, which is used for flattening left and right face values
 // DEPENDENCIES: P(MINUS2,MINUS1,PLUS_1,PLUS_2) and v^m(MINUS1,PLUS_1), where m=flux_dirn={1,2,3}={x,y,z}.
-static double shock_detection__ftilde(const double P[7]) {
+#define OMEGA1   0.75
+#define OMEGA2  10.0
+#define EPSILON2 0.33
+static double shock_detection__ftilde(const double P[7], const double v_flux_dirn[7]) {
   double dP1 = P[PLUS_1] - P[MINUS1];
   double dP2 = P[PLUS_2] - P[MINUS2];
 
@@ -66,7 +69,7 @@ static double shock_detection__ftilde(const double P[7]) {
   double w=0.0;
 
   // w==1 -> inside a shock
-  if (q2 > EPSILON2 && q2*( (U[VX+(flux_dirn-1)][MINUS1]) - (U[VX+(flux_dirn-1)][PLUS_1]) ) > 0.0) w = 1.0;
+  if (q2 > EPSILON2 && q2*( (v_flux_dirn[MINUS1]) - (v_flux_dirn[PLUS_1]) ) > 0.0) w = 1.0;
 
   return MIN(1.0, w*MAX(0.0,q1));
 }
@@ -77,7 +80,8 @@ static double shock_detection__ftilde(const double P[7]) {
 #define ETA1   20.0
 #define ETA2    0.05
 #define EPSILON 0.01
-static void steepen_rho(const double rho[7],const double slope_lim_drho[7], const double Gamma_eff,
+static void steepen_rho(const double rho[7],const double P[7],
+                        const double slope_lim_drho[7], const double Gamma_eff,
                         double *rho_br_ppm, double *rho_bl_ppm) {
 
   // Next compute centered differences d RHOB and d^2 RHOB
@@ -127,7 +131,7 @@ void simple_ppm_1D(const double rho[7], const double P[7],
   double vxr , vxl;   compute_UrUl_onevar(vx,  &vxr,  &vxl);
   double vyr , vyl;   compute_UrUl_onevar(vy,  &vyr,  &vyl);
   double vzr , vzl;   compute_UrUl_onevar(vz,  &vzr,  &vzl);
-  double other_varsr[8], double other_varsl[8];
+  double other_varsr[8], other_varsl[8];
   for(int var=0;var<num_other_vars;var++) {
     compute_UrUl_onevar(other_vars[var], &other_varsr[var], &other_varsl[var]);
   }
