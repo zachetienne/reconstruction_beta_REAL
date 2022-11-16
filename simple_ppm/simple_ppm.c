@@ -71,7 +71,7 @@ static double shock_detection__ftilde(const double P[7]) {
 #define ETA1   20.0
 #define ETA2    0.05
 #define EPSILON 0.01
-static inline void steepen_rho(const double rho[7],double slope_lim_dU[MAXNUMVARS][MAXNUMINDICES], eos_struct *eos) {
+static inline void steepen_rho(const double rho[7],double slope_lim_dU[MAXNUMVARS][MAXNUMINDICES]) {
 
   // Next compute centered differences d RHOB and d^2 RHOB
   double d1rho_b     = 0.5*(rho[PLUS_1] - rho[MINUS1]);
@@ -79,7 +79,7 @@ static inline void steepen_rho(const double rho[7],double slope_lim_dU[MAXNUMVAR
   double d2rho_b_p1  = rho[PLUS_2] - 2.0*rho[PLUS_1] + rho[PLUS_0];
 
   // Compute effective Gamma = (partial P / partial rho0)_s /(P/rho0)
-  double Gamma = gamma_th + (gamma_cold-gamma_th)*P_cold/P[PLUS_0];
+  double Gamma_eff;
   double contact_discontinuity_check = Gamma*K0*fabs(rho[PLUS_1]-rho[MINUS1])*
     MIN(P[PLUS_1],P[MINUS1])
     -fabs(P[PLUS_1]-P[MINUS1])*MIN(rho[PLUS_1],rho[MINUS1]);
@@ -118,7 +118,7 @@ static inline void steepen_rho(const double rho[7],double slope_lim_dU[MAXNUMVAR
 void simple_ppm_1D(const double rho[7], const double P[7],
                    const double vx[7], const double vy[7], const double vz[7],
                    const double other_vars[8][7], const int num_other_vars,
-                   const double v_flux_dirn[7]) {
+                   const double v_flux_dirn[7], const double Gamma_eff) {
   // Interpolate primitives to faces with a slope limiter.
   double rhor, rhol;  compute_UrUl_onevar(rho, &rhor, &rhol);
   double Pr  , Pl;    compute_UrUl_onevar(P,   &Pr,   &Pl);
