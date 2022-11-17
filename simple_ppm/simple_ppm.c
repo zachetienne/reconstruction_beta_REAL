@@ -4,6 +4,7 @@
 #define MIN(a,b) ( ((a) < (b)) ? (a) : (b) )
 #define MAX(a,b) ( ((a) > (b)) ? (a) : (b) )
 
+
 #define MINUS2 0
 #define MINUS1 1
 #define PLUS_0  2
@@ -80,37 +81,39 @@ static double shock_detection__ftilde(const double P[7], const double v_flux_dir
 #define ETA1   20.0
 #define ETA2    0.05
 #define EPSILON 0.01
-static void steepen_rho(const double rho[7],const double P[7],
-                        const double slope_lim_drho[7], const double Gamma_eff,
+static void steepen_rho(const double rho[7],const double P[7], const double Gamma_eff,
                         double *rho_br_ppm, double *rho_bl_ppm) {
 
   // Next compute centered differences d RHOB and d^2 RHOB
-  double d1rho_b     = 0.5*(rho[PLUS_1] - rho[MINUS1]);
-  double d2rho_b_m1  = rho[PLUS_0] - 2.0*rho[MINUS1] + rho[MINUS2];
-  double d2rho_b_p1  = rho[PLUS_2] - 2.0*rho[PLUS_1] + rho[PLUS_0];
+  const double d1rho_b     = 0.5*(rho[PLUS_1] - rho[MINUS1]);
+  const double d2rho_b_m1  = rho[PLUS_0] - 2.0*rho[MINUS1] + rho[MINUS2];
+  const double d2rho_b_p1  = rho[PLUS_2] - 2.0*rho[PLUS_1] + rho[PLUS_0];
 
   // Gamma_eff = (partial P / partial rho0)_s /(P/rho0)
-  double contact_discontinuity_check = Gamma_eff*K0*fabs(rho[PLUS_1]-rho[MINUS1])*
+  const double contact_discontinuity_check = Gamma_eff*K0*fabs(rho[PLUS_1]-rho[MINUS1])*
     MIN(P[PLUS_1],P[MINUS1])
     -fabs(P[PLUS_1]-P[MINUS1])*MIN(rho[PLUS_1],rho[MINUS1]);
-  double second_deriv_check = -d2rho_b_p1*d2rho_b_m1;
-  double relative_change_check = fabs(2.0*d1rho_b) - EPSILON*MIN(rho[PLUS_1],rho[MINUS1]);
+  const double second_deriv_check = -d2rho_b_p1*d2rho_b_m1;
+  const double relative_change_check = fabs(2.0*d1rho_b) - EPSILON*MIN(rho[PLUS_1],rho[MINUS1]);
 
   if(contact_discontinuity_check >= 0.0 && second_deriv_check >= 0.0
      && relative_change_check >= 0.0) {
+
+    const double slope_limited_drho_m1 = slope_limit(rho[MINUS1] - rho[MINUS2], rho[PLUS_0] - rho[MINUS1]);
+    const double slope_limited_drho_p1 = slope_limit(rho[PLUS_1] - rho[PLUS_0], rho[PLUS_2] - rho[PLUS_1]);
 
     double eta_tilde=0.0;
     if (fabs(d1rho_b) > 0.0) {
       eta_tilde = -(1.0/6.0)*(d2rho_b_p1-d2rho_b_m1)/(2.0*d1rho_b);
     }
-    double eta = MAX(0.0,MIN(ETA1*(eta_tilde - ETA2),1.0));
+    const double eta = MAX(0.0,MIN(ETA1*(eta_tilde - ETA2),1.0));
     // Next compute Urp1 and Ul for RHOB, using the MC prescription:
     // Ur_p1 = U_p1   - 0.5*slope_lim_dU_p1
-    double rho_br_mc_p1 = rho[PLUS_1] - 0.5*slope_lim_drho[PLUS_1];
+    const double rho_br_mc_p1 = rho[PLUS_1] - 0.5*slope_limited_drho_p1;
     // Ul = U_m1 + 0.5*slope_lim_dU_m1
     // Based on this line of code, Ur[index] = a_j - \delta_m a_j / 2. (cf. Eq. 65 in Marti & Muller's "PPM Method for 1D Relativistic Hydro." paper)
     //    So: Ur[indexp1] = a_{j+1} - \delta_m a_{j+1} / 2. This is why we have rho_br_mc[indexp1]
-    double rho_bl_mc    = rho[MINUS1] + 0.5*slope_lim_drho[MINUS1];
+    const double rho_bl_mc    = rho[MINUS1] + 0.5*slope_limited_drho_m1;
 
     *rho_bl_ppm = (*rho_bl_ppm)*(1.0-eta) + rho_bl_mc*eta;
     *rho_br_ppm = (*rho_br_ppm)*(1.0-eta) + rho_br_mc_p1*eta;
@@ -119,12 +122,38 @@ static void steepen_rho(const double rho[7],const double P[7],
 }
 
 
+static void flatten_r_and_l(const double U, const double ftilde, double *Ur, double *Ul) {
+  *Ur = U*ftilde + (*Ur)*(1.0-ftilde);
+  *Ul = U*ftilde + (*Ul)*(1.0-ftilde);
+}
+
+
+static inline void monotonize_r_and_l(const double U, double *Ur, double *Ul) {
+  const double dU = (*Ur) - (*Ul);
+  const double mU = 0.5*((*Ur)+(*Ul));
+
+  if ( ((*Ur)-U)*(U-(*Ul)) <= 0.0) {
+    (*Ur) = U;
+    (*Ul) = U;
+    return;
+  }
+  if ( dU*(U-mU) > (1.0/6.0)*(dU*dU)) {
+    (*Ul) = 3.0*U - 2.0*(*Ur);
+    return;
+  }
+  if ( dU*(U-mU) < -(1.0/6.0)*(dU*dU)) {
+    (*Ur) = 3.0*U - 2.0*(*Ul);
+    return;
+  }
+}
+
 
 // Gamma_eff = (partial P / partial rho0)_s /(P/rho0)
 void simple_ppm_1D(const double rho[7], const double P[7],
                    const double vx[7], const double vy[7], const double vz[7],
                    const double other_vars[8][7], const int num_other_vars,
                    const double v_flux_dirn[7], const double Gamma_eff) {
+
   // Interpolate primitives to faces with a slope limiter.
   double rhor, rhol;  compute_UrUl_onevar(rho, &rhor, &rhol);
   double Pr  , Pl;    compute_UrUl_onevar(P,   &Pr,   &Pl);
@@ -136,6 +165,26 @@ void simple_ppm_1D(const double rho[7], const double P[7],
     compute_UrUl_onevar(other_vars[var], &other_varsr[var], &other_varsl[var]);
   }
 
-  // Next, steepen rho
-  
+  // Steepen rho
+  steepen_rho(rho, P, Gamma_eff, &rhor, &rhol);
+
+  // Flatten and monotonize all variables
+  // First detect shocks / steep gradients:
+  {
+    const double ftilde = shock_detection__ftilde(P, v_flux_dirn);
+    flatten_r_and_l(   rho[PLUS_0],ftilde, &rhor,&rhol);
+    monotonize_r_and_l(rho[PLUS_0],        &rhor,&rhol);
+    flatten_r_and_l(   P[PLUS_0],  ftilde, &Pr,&Pl);
+    monotonize_r_and_l(P[PLUS_0],          &Pr,&Pl);
+    flatten_r_and_l(   vx[PLUS_0], ftilde, &vxr,&vxl);
+    monotonize_r_and_l(vx[PLUS_0],         &vxr,&vxl);
+    flatten_r_and_l(   vy[PLUS_0], ftilde, &vyr,&vyl);
+    monotonize_r_and_l(vy[PLUS_0],         &vyr,&vyl);
+    flatten_r_and_l(   vz[PLUS_0], ftilde, &vzr,&vzl);
+    monotonize_r_and_l(vz[PLUS_0],         &vzr,&vzl);
+    for(int var=0;var<num_other_vars;var++) {
+      flatten_r_and_l(   other_vars[var][PLUS_0], ftilde, &other_varsr[var],&other_varsl[var]);
+      monotonize_r_and_l(other_vars[var][PLUS_0],         &other_varsr[var],&other_varsl[var]);
+    }
+  }
 }
