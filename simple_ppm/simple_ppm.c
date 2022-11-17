@@ -128,7 +128,7 @@ static void flatten_Ur_and_Ul(const double U, const double ftilde, double *Ur, d
 }
 
 
-static inline void monotonize_Ur_and_Ul(const double U, double *Ur, double *Ul) {
+static void monotonize_Ur_and_Ul(const double U, double *Ur, double *Ul) {
   const double dU = (*Ur) - (*Ul);
   const double mU = 0.5*((*Ur)+(*Ul));
 
@@ -148,8 +148,8 @@ static inline void monotonize_Ur_and_Ul(const double U, double *Ur, double *Ul) 
 }
 
 
-// Inputs: Primitives U at *five* locations: i-2,i-1,i,i+1,i+2
-//                                           \_______________/
+// Inputs: Primitives U at *five* locations: i-2,i-1,i,i+1,i+2,
+//         where i-2 == MINUS2; i-1 == MINUS1; i == PLUS_0, etc.
 // Outputs: tmp_Ur[PLUS_0] = U(i+1/2)
 //          tmp_Ul[PLUS_0] = U(i-1/2)
 static void ppm_Ur_Ul(const double rho[5], const double P[5],
@@ -227,7 +227,8 @@ void simple_ppm(const double rho[6], const double P[6],
   //  AND 
   //  * (STEP 1) Ul[PLUS_0] = U(i-1/2-epsilon) = tmp_Ur[MINUS1]
 
-  // STEP 1: Evaluate Ur[MINUS1] and Ul[MINUS1]:
+  // STEP 1: Evaluate Ur[MINUS1] and Ul[MINUS1],
+  //         which depend on U[0],U[1],U[2],U[3],U[4]
   ppm_Ur_Ul(rho, P, vx, vy, vz,
             other_vars, num_other_vars,
             v_flux_dirn, Gamma_eff,
@@ -244,7 +245,10 @@ void simple_ppm(const double rho[6], const double P[6],
   for(int var=0;var<num_other_vars;var++)
     other_varsl[var] = tmp_other_varsr[var];
 
-  // STEP 2: Evaluate Ur[PLUS_0] and Ul[PLUS_0]
+  // STEP 2: Evaluate Ur[PLUS_0] and Ul[PLUS_0],
+  //         which depend on U[1],U[2],U[3],U[4],U[5],
+  //         hence the passing of the address of U[1]
+  //         as the lower bound of the U array.
   ppm_Ur_Ul(&rho[1], &P[1], &vx[1], &vy[1], &vz[1],
             &other_vars[1], num_other_vars,
             &v_flux_dirn[1], Gamma_eff,
